@@ -6,9 +6,18 @@
   var view = document.getElementById("view");
   var memStore = null, storageOK = true, storageNote = "";
   var RK = window.ResultKit;
-  if (RK) RK.configure({ id: "gcd", title: "个人充电", onRestart: function () { restartTest(); } });
+  if (RK) RK.configure({
+    id: "gcd", title: "个人充电", onRestart: function () { restartTest(); },
+    // 导出图片 / 历史里导出：把「今日耗电地图」页上的全部内容画进长图（只在地图页才抓取，避免抓到别的页）
+    capture: function () {
+      if (view.getAttribute("data-ready") !== "map") return null;
+      var foot = document.querySelector(".foot");
+      return RK.capture(view, { skip: ".btn,.btn-row,a.btn" }).concat(foot ? RK.capture(foot) : []);
+    }
+  });
   /* 重新测试：清掉当前作答，回到第一问（历史记录不动） */
   function restartTest() {
+    if (RK) RK.nickReset();
     draft = null; initDraft(null);
     if (location.hash === "#/aware") renderAware(); else location.hash = "#/aware";
   }
@@ -127,6 +136,8 @@
                 : { stateId: null, custom: false, customText: "", sourceIds: [] };
   }
   function renderAware() {
+    // 昵称门槛：打开「今日觉察」（含直接打开链接、刷新、重新选一次）就要先有昵称；点「返回」去看地图
+    if (RK) RK.guard(true, function () { location.hash = "#/map"; });
     var data = load(), rec = todayRecord(data);
     if (!draft) initDraft(rec);
     var html = banner();
@@ -178,6 +189,7 @@
       };
     });
     document.getElementById("submit").onclick = function () {
+      if (RK && !RK.nick.confirmed()) { RK.ensureNick(function () { document.getElementById("submit").onclick(); }, { onCancel: function () { location.hash = "#/map"; } }); return; }
       var err = document.getElementById("err");
       if (!draft.stateId && !(draft.custom && draft.customText.trim())) { err.textContent = draft.custom ? "写一句你现在的状态吧，几个字也行。" : "先选一下你现在的状态～"; return; }
       if (!draft.sourceIds.length) { err.textContent = "再选一下耗电的来源；如果没有，就选最后一项。"; return; }
@@ -284,6 +296,7 @@
   var routes = { aware: renderAware, map: renderMap, repair: renderRepair };
   var first = true;
   function route() {
+    if (RK) RK.closeNick();
     var name = (location.hash.replace(/^#\/?/, "") || "aware");
     if (!routes[name]) name = "aware";
     document.querySelectorAll("#tabs a").forEach(function (a) {

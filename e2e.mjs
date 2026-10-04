@@ -5,6 +5,8 @@ const SHOTS = process.env.SHOTS || "/workspace/geren-chongdian-shots/";
 const res = []; const ok = (c, m) => { res.push((c ? "PASS " : "FAIL ") + m); if (!c) process.exitCode = 1; };
 const b = await chromium.launch({ headless: true });
 const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+// 昵称门槛：除专门的昵称用例外，先预置「已确认昵称」（只在第一次打开时写入，不覆盖后面改的）
+await ctx.addInitScript(() => { if (!window.__noNick) { try { if (!localStorage.getItem("rk.v1.nickname")) localStorage.setItem("rk.v1.nickname", "测试者"); sessionStorage.setItem("rk.v1.nickok.gcd", localStorage.getItem("rk.v1.nickname")); } catch (e) {} } });
 const p = await ctx.newPage(); const errs = [];
 p.on("pageerror", e => errs.push(e.message)); p.on("console", m => { if (m.type() === "error") errs.push(m.text()); });
 const wait = () => p.waitForSelector("#view[data-ready]", { timeout: 5000 });

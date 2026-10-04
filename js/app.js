@@ -5,6 +5,29 @@
   var KEY = "gcd.v1", KEEP = 30;
   var view = document.getElementById("view");
   var memStore = null, storageOK = true, storageNote = "";
+  var RK = window.ResultKit;
+  if (RK) RK.configure({ id: "gcd", title: "个人充电", onRestart: function () { restartTest(); } });
+  /* 重新测试：清掉当前作答，回到第一问（历史记录不动） */
+  function restartTest() {
+    draft = null; initDraft(null);
+    if (location.hash === "#/aware") renderAware(); else location.hash = "#/aware";
+  }
+  /* 交给「历史 / 导出图片」的摘要 */
+  function summaryOf(rec) {
+    var r = calc(rec), toneOf = function (v) { return v >= 60 ? "high" : v >= 35 ? "mid" : "ok"; };
+    var notes = [];
+    if (r.stage) { var c = R.chain.filter(function (x) { return x.key === r.stage; })[0]; if (c) { notes.push(c.now); notes.push(c.cut); } }
+    notes.push(R.insights.shift);
+    return {
+      headline: "今天的电量 " + r.score + " / 100 · " + r.band.label,
+      sub: r.band.tagline,
+      who: "你说的状态：" + r.stateLabel,
+      metrics: [{ label: "今日电量", value: r.score + " / 100", frac: r.score / 100, tone: r.score >= 60 ? "ok" : r.score >= 35 ? "mid" : "high" }].concat(
+        R.dims.map(function (d) { return { label: d.name + "（越高漏得越多）", value: r.dims[d.key] + " · " + E.dimLevel(r.dims[d.key]), frac: r.dims[d.key] / 100, tone: toneOf(r.dims[d.key]) }; })
+      ),
+      notes: notes.slice(0, 4)
+    };
+  }
 
   /* ---------- 存储（带错误兜底） ---------- */
   function emptyData() { return { v: 1, records: [] }; }
@@ -127,6 +150,7 @@
     });
     html += '<button type="button" class="opt check" role="checkbox" data-src="none" aria-checked="' + hasNone + '"><span class="mark"></span><span>' + esc(R.noneSource.label) + "</span></button>";
     html += '</div></section><div class="err-msg" id="err" role="alert"></div><button class="btn" id="submit" type="button">看看我的电量</button>';
+    if (RK) html += '<div class="btn-row" style="margin-top:12px">' + RK.historyButton({ className: "btn ghost", always: true }) + "</div>";
     view.innerHTML = html;
     view.className = "fade";
 
@@ -162,6 +186,7 @@
       var d = load(), old = todayRecord(d);
       if (old) d.records = d.records.filter(function (r) { return r !== old; });
       d.records.push(rec2); save(d);
+      try { if (RK) RK.save(summaryOf(rec2)); } catch (e) { if (window.console) console.error(e); }
       draft = null; location.hash = "#/map";
     };
   }
@@ -199,6 +224,7 @@
     h += '<section class="card insight"><h2>今日洞察</h2><p>' + fillText(I.band[r.band.key], r.score) + "</p>";
     h += "<p>" + (r.sources.length ? I.dim[r.topDim] : I.noDrain) + '</p><p class="check-q">' + I.check[stKey] + "</p><p>" + I.shift + '</p><p class="disc">' + I.disclaimer + "</p></section>";
     h += '<a class="btn gold" href="#/repair">马上修复一下（3 分钟）</a>';
+    if (RK) h += RK.bar(summaryOf(rec));
     // 近 7 天
     var recent = data.records.slice(-7);
     if (recent.length > 1) {

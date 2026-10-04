@@ -7,7 +7,7 @@
   var memStore = null, storageOK = true, storageNote = "";
   var RK = window.ResultKit;
   if (RK) RK.configure({
-    id: "gcd", title: "个人充电", onRestart: function () { restartTest(); },
+    id: "gcd", title: "个人充电", start: ["#submit"], onRestart: function () { restartTest(); },
     // 导出图片 / 历史里导出：把「今日耗电地图」页上的全部内容画进长图（只在地图页才抓取，避免抓到别的页）
     capture: function () {
       if (view.getAttribute("data-ready") !== "map") return null;
@@ -136,8 +136,7 @@
                 : { stateId: null, custom: false, customText: "", sourceIds: [] };
   }
   function renderAware() {
-    // 昵称门槛：打开「今日觉察」（含直接打开链接、刷新、重新选一次）就要先有昵称；点「返回」去看地图
-    if (RK) RK.guard(true, function () { location.hash = "#/map"; });
+    // 昵称门槛：输入框内嵌在本页提交按钮前面（kit 的 start 配置），没填昵称按钮禁用；直接打开链接、刷新、重新选一次都在这一页里补录
     var data = load(), rec = todayRecord(data);
     if (!draft) initDraft(rec);
     var html = banner();

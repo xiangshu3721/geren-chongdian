@@ -235,6 +235,7 @@
     h += '<section class="card insight"><h2>今日洞察</h2><p>' + fillText(I.band[r.band.key], r.score) + "</p>";
     h += "<p>" + (r.sources.length ? I.dim[r.topDim] : I.noDrain) + '</p><p class="check-q">' + I.check[stKey] + "</p><p>" + I.shift + '</p><p class="disc">' + I.disclaimer + "</p></section>";
     h += '<a class="btn gold" href="#/repair">马上修复一下（3 分钟）</a>';
+    h += '<div id="gcd-share" data-rk-skip></div>';
     if (RK) h += RK.bar(summaryOf(rec));
     // 近 7 天
     var recent = data.records.slice(-7);
@@ -244,6 +245,23 @@
       }).join("") + "</div></section>";
     }
     view.innerHTML = h; view.className = "fade";
+    mountCloud(rec);
+  }
+
+  /* 地图算完自动交一次。同一条本地记录（ts）只交一次；覆盖今天会换 ts，云端新开 reportId。自述不进上传体。 */
+  function mountCloud(rec) {
+    var slot = document.getElementById("gcd-share");
+    if (!slot || !window.GcdCloud) return;
+    var key = rec.ts ? String(rec.ts) : rec.date + "|" + (rec.stateId || "") + "|" + (rec.sourceIds || []).join(",");
+    window.GcdCloud.mount(slot, {
+      nickname: (RK && RK.nick && RK.nick.get()) || "",
+      stateId: rec.stateId || null,
+      customText: rec.stateId ? "" : (rec.customText || ""),
+      sourceIds: (rec.sourceIds || []).slice(),
+      dayIndex: dayIndex(rec.date),
+      submissionKey: key,
+      completedAt: rec.ts || Date.now()
+    });
   }
 
   /* ---------- 页面 3：今日修复 ---------- */

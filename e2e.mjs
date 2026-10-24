@@ -9,11 +9,27 @@ const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceSc
 await ctx.addInitScript(() => { if (!window.__noNick) { try { if (!localStorage.getItem("rk.v1.nickname")) localStorage.setItem("rk.v1.nickname", "测试者"); sessionStorage.setItem("rk.v1.nickok.gcd", localStorage.getItem("rk.v1.nickname")); } catch (e) {} } });
 const p = await ctx.newPage(); const errs = [];
 p.on("pageerror", e => errs.push(e.message)); p.on("console", m => { if (m.type() === "error") errs.push(m.text()); });
+const posts = [];
+await p.route("**/assessment-report-dev/**", async (route) => {
+  const body = route.request().postData() || "";
+  posts.push(body);
+  let reportId = "rpt_abcdefghijk";
+  try { reportId = JSON.parse(body).result.reportId || reportId; } catch (e) {}
+  await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ reportId, index: "off", byteSize: 4 }) });
+});
+const waitLinks = (n) => p.waitForFunction((expected) => {
+  try {
+    const data = JSON.parse(localStorage.getItem("rk.cloud.links.v1") || "{}");
+    const keys = Object.keys((data && data.items) || {}).filter((k) => k.indexOf("gcd:") === 0);
+    return keys.length >= expected;
+  } catch (e) { return false; }
+}, n, { timeout: 5000 });
 const wait = () => p.waitForSelector("#view[data-ready]", { timeout: 5000 });
 const prefix = process.env.PREFIX || "";
 // 1 空状态
 await p.goto(BASE + "#/map"); await wait();
 ok(await p.locator(".empty").count() === 1 && (await p.textContent("#view")).includes("今天还没有电量"), "地图页空状态");
+ok(posts.length === 0, "空地图不提交");
 await p.goto(BASE + "#/repair"); await p.reload(); await wait();
 ok((await p.textContent("#view")).includes("今天还没有修复建议"), "修复页空状态");
 // 骨架屏存在
@@ -35,11 +51,25 @@ await p.click('[data-src="body"]'); await p.click('[data-src="phone"]');
 ok(await p.locator('[data-src][aria-checked="true"]').count() === 3, "取消一个后可换选");
 await p.screenshot({ path: SHOTS + prefix + "01-aware.png", fullPage: false });
 await p.click("#submit"); await p.waitForURL(/#\/map/); await wait();
+await waitLinks(1);
 // tired 55 - enough 7 - stuck 7 - phone 6 = 35
 await p.waitForTimeout(2600); const sc = await p.textContent(".battery .num");
 ok(sc.startsWith("35"), "电量=55-7-7-6=35, 实际 " + sc);
 ok(await p.locator(".dim-row").count() === 4, "四维 4 行");
 ok(await p.locator(".node").count() === 5 && await p.locator(".node.on").count() === 1, "耗电链路 5 环且 1 环高亮: " + await p.textContent(".node.on"));
+ok(posts.length === 1, "算出电量后自动提交一次，实际 " + posts.length);
+const body1 = JSON.parse(posts[0]);
+ok(body1.result && body1.result.assessmentId === "gcd" && body1.result.assessmentVersion === "gcd-h5-v1", "云端标识 gcd / gcd-h5-v1");
+ok(body1.result.extensionData.stateId === "tired" && body1.result.extensionData.sourceIds.length === 3 && typeof body1.result.extensionData.dayIndex === "number", "上传 stateId、sourceIds、dayIndex");
+ok(body1.result.extensionData.score.score === 35 && body1.result.extensionData.consent.version === "consent-assessment-gcd-1" && body1.result.extensionData.consent.agreed === true, "快照电量与自动同意");
+ok(!posts[0].includes("customText") && !posts[0].includes("stateLabel"), "请求体没有自述字段");
+const shareText = await p.locator("#gcd-share").innerText();
+ok(shareText.includes("分享结果") && !shareText.includes("同意"), "分享结果，无同意勾选");
+await ctx.grantPermissions(["clipboard-read", "clipboard-write"]);
+await p.click('#gcd-share [data-cloud="share"]');
+await p.waitForFunction(() => (document.querySelector("#gcd-share") || {}).innerText && document.querySelector("#gcd-share").innerText.includes("链接已复制"));
+const copied = await p.evaluate(() => navigator.clipboard.readText());
+ok(/^https:\/\/xiangshu3721\.github\.io\/mindtest-web\/r\/#[A-Za-z0-9_-]{11}\.[A-Za-z0-9_-]{16}$/.test(copied) && !copied.includes("rpt_"), "分享只复制短链 " + copied);
 await p.screenshot({ path: SHOTS + prefix + "02-map.png", fullPage: true });
 // 修复页
 await p.click('#tabs a[data-route="repair"]'); await p.waitForSelector('#view[data-ready="repair"]');
@@ -55,11 +85,17 @@ ok((await p.getAttribute(".chk >> nth=0", "aria-pressed")) === "true", "刷新�
 await p.goto(BASE + "#/map"); await p.reload(); await wait();
 ok((await p.textContent(".battery .num")).startsWith("35"), "刷新后电量保留");
 const stored = await p.evaluate(() => localStorage.getItem("gcd.v1")); ok(!!stored && JSON.parse(stored).records.length === 1, "localStorage 有 1 条");
+ok(posts.length === 1, "刷新地图不重复提交，实际 " + posts.length);
 // 手动输入
 await p.goto(BASE + "#/aware"); await wait();
 await p.click('[data-state="__custom"]'); await p.click("#submit"); ok((await p.textContent("#err")).includes("写一句"), "自写为空提示");
 await p.fill("#customIn", "有点烦又有点累，说不清"); await p.click('[data-src="none"]'); await p.click("#submit"); await p.waitForURL(/#\/map/); await wait();
+await waitLinks(2);
 ok((await p.textContent(".you-said")).includes("有点烦又有点累"), "手动输入状态显示");
+ok(posts.length === 2, "覆盖今天再交一份，实际 " + posts.length);
+const body2 = JSON.parse(posts[1]);
+ok(body2.result.reportId !== body1.result.reportId, "覆盖今天新开 reportId");
+ok(!posts[1].includes("有点烦又有点累") && !posts[1].includes("customText"), "自述原文不上传");
 const sc2 = await p.textContent(".battery .num"); ok(!isNaN(parseInt(sc2)), "手动输入电量 " + sc2);
 ok((await p.locator("#view").textContent()).includes("先把自己接上世界") || (await p.locator(".foot").textContent()).includes("先把自己接上世界，你才会重新有电"), "结语");
 // 损坏数据
